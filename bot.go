@@ -4,6 +4,7 @@ package main
 // IMPORTS
 // =============================================================================
 import (
+	"io"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -120,20 +121,33 @@ func sendIC24(message string) {
 // sendMilitia sends to all webhook URLs in relayWebhookURLs via HTTP POST.
 // No bot token or server membership required — just the webhook URL.
 func sendMilitia(message string) {
-	payload, _ := json.Marshal(map[string]interface{}{
-		"content": message,
-		"allowed_mentions": map[string]interface{}{
-			"parse": []string{"everyone", "roles"},
-		},
-	})
-	for _, webhookURL := range cfg.RelayWebhookURLs {
-		resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payload))
-		if err != nil {
-			fmt.Println("Failed to post to webhook:", err)
-			continue
-		}
-		resp.Body.Close()
-	}
+    payload, err := json.Marshal(map[string]interface{}{
+        "content": message,
+        "allowed_mentions": map[string]interface{}{
+            "parse": []string{"everyone", "roles"},
+        },
+    })
+    if err != nil {
+        fmt.Println("sendMilitia: failed to marshal payload:", err)
+        return
+    }
+
+    for _, webhookURL := range cfg.RelayWebhookURLs {
+        resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(payload))
+        if err != nil {
+            fmt.Println("sendMilitia: HTTP error for webhook:", webhookURL, "error:", err)
+            continue
+        }
+        defer resp.Body.Close()
+
+        // Log the response status for every webhook attempt
+        body, _ := io.ReadAll(resp.Body)
+        if resp.StatusCode != 200 && resp.StatusCode != 204 {
+            fmt.Printf("sendMilitia: webhook returned %d for %s — body: %s\n", resp.StatusCode, webhookURL, string(body))
+        } else {
+            fmt.Printf("sendMilitia: webhook OK %d for %s\n", resp.StatusCode, webhookURL)
+        }
+    }
 }
 
 // sendByTarget is a convenience dispatcher used by scheduled jobs and
